@@ -1,2 +1,11 @@
 selectivesearch 
 torch_snippets 
+numpy
+pandas 
+torch 
+torchvision
+opencv-python 
+albumentations
+pycocotools
+matplotlib
+IPython
