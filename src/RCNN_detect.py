@@ -81,7 +81,7 @@ def extract_candidates(img):
         # skip duplicate regions 
         if r['rect'] in candidates: continue
         # skip the areas that are too small 
-        if r['size'] < (0.5*img_area): continue
+        if r['size'] < (0.05*img_area): continue
         # skip the areas that are too large 
         if r['size'] > (1*img_area): continue
         x, y, w, h  = r['rect']
@@ -113,3 +113,60 @@ def extract_iou(boxA, boxB, epsilon=1e-5):
     # IOU 
     iou = area_overlap/(area_comb+epsilon)
     return iou
+
+# Ex of df[15]
+# im, bbs, clss, _ = ds[12]
+# # candidates 
+# candidates = extract_candidates(im)
+# # convert to [x, y, w, h]
+# candidates_xyxy = [[x, y, x+w, y+h] for x, y, w, h in candidates]
+# print(np.shape(candidates_xyxy))
+# print(type(candidates_xyxy))
+# # show the images with the candidate bounding boxes 
+# show(im, bbs=candidates_xyxy)
+
+(im, bbs, clss, fpath) = ds[15]
+H, W, _ = im.shape
+# extract candidates bounding boxes 
+candidates = extract_candidates(im)
+# convert to format 
+candidates = np.array([[x, y, x+w, y+h ] for x, y, w, h in candidates])
+
+# initialize lists to store IoUs, ROIs, classes, deltas, and best IoUs
+ious, rois, clss, deltas, best_ious = [], [], [], [], []
+temp_best_bbs = []
+# calculate IoU between each candidate and each ground truth boounding box 
+ious = np.array([[extract_iou(candidate, _bb_) for candidate in candidates] for _bb_ in bbs]).T
+
+
+# iterate through each candidate bounding box 
+
+for jx, candidate in enumerate(candidates):
+    cx, cy, cX, cY = candidate
+    candidate_ious = ious[jx]
+    best_ious_at = np.argmax(candidate_ious)
+    best_iou = candidate_ious[best_ious_at]
+    best_ious.append(best_iou)
+    best_bb = _x, _y, _X, _Y = bbs[best_ious_at]
+    temp_best_bbs.append(best_bb)
+    if best_iou > 0.3: clss.append(clss[best_ious_at])
+    else: clss.append("Background")
+    # delta 
+    delta = np.array([_x-cx, _y-cy, _X-cY, _Y-cY])/np.array([W, H, W, H])
+    # append delta to list 
+    deltas.append(delta)
+    rois.append(candidate/np.array([W, H,W,H]))
+    
+    
+
+# Find the index of the candidate with the overall best IoU
+overall_best_iou_idx = np.argmax(best_ious)
+print("Best IoU:", best_ious[overall_best_iou_idx])
+
+# Get the candidate bounding box with the best IoU
+best_candidate = candidates[overall_best_iou_idx]
+# Get the ground truth bounding box corresponding to the overall best IoU
+best_bbs = temp_best_bbs[overall_best_iou_idx]
+
+candidates = extract_candidates(im)
+show(im, bbs = [best_bbs, best_candidate], confs= [0,0.5], texts = ['Bbox', 'Best candidate Bbox'])
