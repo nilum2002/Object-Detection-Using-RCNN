@@ -319,7 +319,7 @@ def validate_batch(inputs, model, criterion):
 rcnn = RCNN.RCNN(vgg_backbone, label2target).to(device)
 criterion = rcnn.calc_loss
 optimizer = optim.SGD(rcnn.parameters(), lr=1e-3)
-n_epochs = 1
+n_epochs = 5
 log = Report(n_epochs) #records the metrics as report, can be used to plot later
 
 
