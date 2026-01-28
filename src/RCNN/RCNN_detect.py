@@ -22,10 +22,12 @@ from torch_snippets import show
 import selectivesearch 
 from pathlib import Path
 from itertools import chain
-import RCNN_DataSet
-import RCNN
+import RCNN.RCNN_DataSet as RCNN_DataSet
+import RCNN.RCNN as RCNN
 from torch.utils.data import TensorDataset, DataLoader
 from torch_snippets import Report
+from torchvision.ops import nms
+
 
 
 IMG_ROOT = r"D:\01. projects\ObjectDetectionRCNN\DataSet\images\images"
@@ -389,3 +391,58 @@ def test_single_image(image_path, model, label2target, device):
 # Example usage:
 test_image_path = r"D:\01. projects\ObjectDetectionRCNN\DataSet\images\images\0a00eb17a14585f7.jpg"
 test_single_image(test_image_path, rcnn, label2target, device)
+
+
+def test_predictions(filename, show_output=True):
+    img = np.array(cv2.imread(filename, 1)[...,::-1])
+    candidates = extract_candidates(img)
+    candidates = [(x,y,x+w,y+h) for x,y,w,h in candidates]
+    input = []
+    for candidate in candidates:
+        x,y,X,Y = candidate
+        crop = cv2.resize(img[y:Y,x:X], (224,224))
+        input.append(preprocess_image(crop/255.)[None])
+    input = torch.cat(input).to(device)  #Concatenates the given sequence of seq tensors in the given dimension
+    with torch.no_grad():
+        rcnn.eval()
+        probs, deltas = rcnn(input)
+        print("Shape of probs", np.shape(probs))
+        print("Shape of deltas", np.shape(deltas))
+        probs = torch.nn.functional.softmax(probs, -1)  # probability is put between 0 and 1 by doing a softmax
+        confs, clss = torch.max(probs, -1) #-1 is the dimension in which the max (reduction) must happen -> confs tells me the confidence and clss tells me the class where it has found the max probs
+        print("Shape of confs", np.shape(confs))
+        print("Shape of clss", np.shape(clss))
+    candidates = np.array(candidates)
+    confs, clss, probs, deltas = [tensor.detach().cpu().numpy() for tensor in [confs, clss, probs, deltas]]
+
+    ixs = clss!=background_class
+    confs, clss, probs, deltas, candidates = [tensor[ixs] for tensor in [confs, clss, probs, deltas, candidates]]
+    bbs = (candidates + deltas).astype(np.uint16)
+    ixs = nms(torch.tensor(bbs.astype(np.float32)), torch.tensor(confs), 0.05)
+    confs, clss, probs, deltas, candidates, bbs = [tensor[ixs] for tensor in [confs, clss, probs, deltas, candidates, bbs]]
+    if len(ixs) == 1:
+        # condition that even after nms, many ixs come for the bbox
+        confs, clss, probs, deltas, candidates, bbs = [tensor[None] for tensor in [confs, clss, probs, deltas, candidates, bbs]]
+    if len(confs) == 0 and not show_output:
+        return (0,0,224,224), 'background', 0
+    if len(confs) > 0:
+        best_pred = np.argmax(confs)  # index
+        best_conf = np.max(confs)
+        best_bb = bbs[best_pred]
+        x,y,X,Y = best_bb
+    _, ax = plt.subplots(1, 2, figsize=(20,10))
+    show(img, ax=ax[0])
+    ax[0].grid(False)
+    ax[0].set_title('Original image')
+    if len(confs) == 0:
+        ax[1].imshow(img)
+        ax[1].set_title('No objects')
+        plt.show()
+        return
+    ax[1].set_title('Predicted object: ' + target2label[clss[best_pred]])
+    show(img, bbs=bbs.tolist(), texts=[target2label[c] for c in clss.tolist()], ax=ax[1])
+    plt.show()
+    return (x,y,X,Y),target2label[clss[best_pred]],best_conf
+
+image, crops, bbs, labels, deltas, gtbbs, fpath = test_ds[6]
+test_predictions(fpath)
