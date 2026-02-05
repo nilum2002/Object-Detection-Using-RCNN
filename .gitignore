@@ -1,4 +1,6 @@
 /* env */
 env 
-/DataSet/
 __pycache__
+/DataSet/
+/AquariumDataset/
+
